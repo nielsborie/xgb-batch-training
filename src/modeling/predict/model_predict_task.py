@@ -5,10 +5,9 @@ from typing import List
 import xgboost as xgb
 from pyspark.sql import DataFrame
 
-from src.modeling.training.model_training_task import add_batch_column
 from src import data_dir
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 
@@ -43,25 +42,25 @@ def model_predict_task(experiment_id: str,
     xgb_model.load_model(xgb_model_path)
 
     # Get the total number of rows and calculate the total number of batches
-    num_rows = data.count()
-    total_batches = num_rows // batch_size + 1
     logger.info(f"Experiment ID: {experiment_id} - Starting [model_predict] task ...")
     # Create the output folder for predictions
     output_folder = os.path.join(data_dir, f"batch_predictions", f"{experiment_id}", f"{prefix}")
     os.makedirs(output_folder, exist_ok=True)
 
-    # Add a batch column if it doesn't exist
-    data = add_batch_column(df=data, batch_size=batch_size)
-
-    for i in range(total_batches):
+    num_rows = data.count()
+    num_batches = (num_rows + batch_size - 1) // batch_size
+    splits = data.randomSplit([1.0] * num_batches, seed=42)
+    total_batches = len(splits)
+    batch_count = 0
+    for i, batch_data in enumerate(splits):
         current_batch = i + 1
         remaining_batches = total_batches - current_batch
 
         # Select the data for the current batch
-        batch_data = data.filter(data["batch"] == i).select(*additional_columns, target_column, *predictors)
         batch_size_current = batch_data.count()
+        batch_count += batch_size_current
 
-        logger.debug(f"Processing Batch {i + 1} - Size: {batch_size_current}")
+        logger.info(f"Processing Batch {i + 1} / {total_batches} - Size: {batch_size_current}")
 
         # Convert the Spark DataFrame to a Pandas DataFrame
         data_pandas = batch_data.toPandas()
@@ -77,11 +76,13 @@ def model_predict_task(experiment_id: str,
         batch_file_path = os.path.join(output_folder, f"batch_{i}.parquet")
         data_pandas.to_parquet(batch_file_path, engine='pyarrow')
 
-        logger.debug(f"Batch {i + 1} predictions completed. {remaining_batches} batches remaining. Batch saved at {batch_file_path}")
+        logger.info(f"Batch {i + 1} / {total_batches} predictions completed. {remaining_batches} batches remaining. Percentage of dataset processed: {(batch_count / num_rows) * 100:.2f}%.")
+        logger.info(f"Batch {i + 1} / {total_batches} predictions saved in {batch_file_path}")
 
         # Release the memory
         del batch_data, data_pandas, dmatrix_data, batch_predictions
 
+    logger.info(f"Total number of rows processed: {batch_count} / {num_rows}.")
     logger.info(f"All batches predictions completed and saved in {output_folder}")
     logger.info(f"Experiment ID: {experiment_id} - [model_predict] task done.")
     return output_folder

@@ -1,4 +1,9 @@
-from src.modeling.training.model_training_task import model_training_task, add_batch_column
+from unittest import mock
+from unittest.mock import patch, Mock
+
+import numpy as np
+
+from src.modeling.training.model_training_task import model_training_task
 from tests import PySparkTestCase
 
 
@@ -34,45 +39,42 @@ class TestModelTrainingTask(PySparkTestCase):
         # Assert that the model path is not None
         self.assertTrue(model_path is not None)
 
-
-class TestAddBatchColumn(PySparkTestCase):
-
-    def test_add_batch_column_with_larger_dataset(self):
+    @patch('xgboost.train')
+    @patch('xgboost.DMatrix')
+    def test_model_training_task_with_mocked_data(self, mock_dmatrix, mock_train):
         # Given
-        data = [(1, "a"), (2, "b"), (3, "c"), (4, "d"), (5, "e"), (6, "f")]
-        df = self.spark.createDataFrame(data, ["id", "features"])
-        batch_size = 2
+        data = [("id1", 1, 0.1, False),
+                ("id2", 2, 0.2, False),
+                ("id3", 3, 0.3, False),
+                ("id4", 4, 0.4, True),
+                ("id5", 5, 0.5, False)]
+        df = self.spark.createDataFrame(data, ["transferId", "feature1", "feature2", "target"])
+
+        # Define the parameters
+        params = {"max_depth": 3}
+
+        # Mock the xgb.train method
+        mock_xgb_model = Mock()
+        mock_xgb_model.save_model.return_value = None
+        mock_train.return_value = mock_xgb_model
 
         # When
-        df_with_batch = add_batch_column(df, batch_size)
+        model_training_task("exp1", df, ["feature1", "feature2"], "target", 2, params, "models")
 
         # Then
-        self.assertEqual(df_with_batch.filter(df_with_batch["batch"] == 0).count(), 2)
-        self.assertEqual(df_with_batch.filter(df_with_batch["batch"] == 1).count(), 2)
-        self.assertEqual(df_with_batch.filter(df_with_batch["batch"] == 2).count(), 2)
+        # Verify that xgb_model.save_model is called
+        mock_xgb_model.save_model.assert_called_once_with("models/exp1/xgb_trained.model")
 
-    def test_add_batch_column_with_smaller_dataset(self):
-        # Given
-        data_small = [(1, "a"), (2, "b")]
-        df_small = self.spark.createDataFrame(data_small, ["id", "features"])
-        batch_size_small = 5
+        # Verify that each row is used exactly once
+        rows_used = set()
+        for call_args in mock_dmatrix.call_args_list:
+            _, kwargs = call_args
+            X_train = kwargs['data']
+            rows_used.update(set(X_train[:, 0]))  # Assuming 'feature1' is in the DataFrame
 
-        # When
-        df_with_batch_small = add_batch_column(df_small, batch_size_small)
+        # Verify that each row is used exactly once
+        expected_rows_used = set(df.select('feature1').rdd.flatMap(lambda x: x).collect())
+        self.assertEqual(expected_rows_used, rows_used)
 
-        # Then
-        self.assertEqual(df_with_batch_small.filter(df_with_batch_small["batch"] == 0).count(), 2)
-
-    def test_add_batch_column_with_uneven_dataset(self):
-        # Given
-        data_uneven = [(1, "a"), (2, "b"), (3, "c"), (4, "d"), (5, "e"), (6, "f"), (7, "g")]
-        df_uneven = self.spark.createDataFrame(data_uneven, ["id", "features"])
-        batch_size_uneven = 3
-
-        # When
-        df_with_batch_uneven = add_batch_column(df_uneven, batch_size_uneven)
-
-        # Then
-        self.assertEqual(df_with_batch_uneven.filter(df_with_batch_uneven["batch"] == 0).count(), 3)
-        self.assertEqual(df_with_batch_uneven.filter(df_with_batch_uneven["batch"] == 1).count(), 3)
-        self.assertEqual(df_with_batch_uneven.filter(df_with_batch_uneven["batch"] == 2).count(), 1)
+        # Verify that xgb_model.save_model is called
+        mock_xgb_model.save_model.assert_called_once_with("models/exp1/xgb_trained.model")
