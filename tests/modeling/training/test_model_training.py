@@ -1,7 +1,4 @@
-from unittest import mock
 from unittest.mock import patch, Mock
-
-import numpy as np
 
 from src.modeling.training.model_training_task import model_training_task
 from tests import PySparkTestCase
@@ -18,7 +15,7 @@ class TestModelTrainingTask(PySparkTestCase):
 
     def test_model_training_task_with_missing_target_column(self):
         with self.assertRaises(ValueError):
-            df = self.spark.createDataFrame([(1, "a"), (2, "b"), (3, "c")], ["transferId", "features"])
+            df = self.spark.createDataFrame([(1, "a"), (2, "b"), (3, "c")], ["id", "features"])
             model_training_task("exp1", df, ["features"], "label", 1000, None, "models")
 
     def test_model_training_task_incremental_training(self):
@@ -28,7 +25,7 @@ class TestModelTrainingTask(PySparkTestCase):
                 ("id3", 3, 0.3, False),
                 ("id4", 4, 0.4, True),
                 ("id5", 5, 0.5, False)]
-        df = self.spark.createDataFrame(data, ["transferId", "feature1", "feature2", "target"])
+        df = self.spark.createDataFrame(data, ["id", "feature1", "feature2", "target"])
 
         # Define the parameters
         params = {"max_depth": 3}
@@ -48,7 +45,7 @@ class TestModelTrainingTask(PySparkTestCase):
                 ("id3", 3, 0.3, False),
                 ("id4", 4, 0.4, True),
                 ("id5", 5, 0.5, False)]
-        df = self.spark.createDataFrame(data, ["transferId", "feature1", "feature2", "target"])
+        df = self.spark.createDataFrame(data, ["id", "feature1", "feature2", "target"])
 
         # Define the parameters
         params = {"max_depth": 3}

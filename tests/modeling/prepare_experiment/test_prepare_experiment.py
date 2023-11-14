@@ -135,16 +135,16 @@ class TestPrepareMLExperimentTask(PySparkTestCase):
                                                                                         report_dir=temp_dir)
 
             # Then
-            expected_train_transfer_ids = ["id1", "id2"]
-            expected_val_transfer_ids = ["id3"]
-            expected_test_transfer_ids = ["id4"]
+            expected_train_ids = ["id1", "id2"]
+            expected_val_ids = ["id3"]
+            expected_test_ids = ["id4"]
 
             self.assertListEqual(train_data.select("id").rdd.flatMap(lambda x: x).collect(),
-                                 expected_train_transfer_ids)
+                                 expected_train_ids)
             self.assertListEqual(val_data.select("id").rdd.flatMap(lambda x: x).collect(),
-                                 expected_val_transfer_ids)
+                                 expected_val_ids)
             self.assertListEqual(test_data.select("id").rdd.flatMap(lambda x: x).collect(),
-                                 expected_test_transfer_ids)
+                                 expected_test_ids)
 
 class TestPlotGantt(unittest.TestCase):
 
